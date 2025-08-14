@@ -15,11 +15,6 @@ if (!process.env.OPENAI_API_KEY) {
   process.exit(1);
 }
 
-if (!process.env.OPENAI_ORG_ID) {
-  console.error("❌ ERROR: Missing OPENAI_ORG_ID in Render environment variables");
-  process.exit(1);
-}
-
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
@@ -35,7 +30,7 @@ const upload = multer({ dest: uploadDir });
 // ====== OpenAI setup ======
 const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
-  organization: process.env.OPENAI_ORG_ID,
+  organization: process.env.OPENAI_ORG_ID || undefined,
 });
 
 // ====== In-memory DB ======
@@ -51,17 +46,13 @@ function chunkText(text, chunkSize = 500) {
 }
 
 // ====== Health check ======
-app.get('/api/health', (req, res) => {
-  res.json({ status: 'OK' });
-});
+app.get('/api/health', (req, res) => res.json({ status: 'OK' }));
 
 // ====== Test route ======
-app.get('/test', (req, res) => {
-  res.json({ message: '✅ Backend is working!' });
-});
+app.get('/test', (req, res) => res.json({ message: '✅ Backend is working!' }));
 
 // ====== Chats routes ======
-app.post('/chats/:userId/new', (req, res) => {
+app.post('/api/chats/:userId/new', (req, res) => {
   const { userId } = req.params;
   if (!chatsDB[userId]) chatsDB[userId] = [];
   const newChat = { id: Date.now().toString(), title: `Chat ${chatsDB[userId].length + 1}`, messages: [] };
@@ -69,12 +60,12 @@ app.post('/chats/:userId/new', (req, res) => {
   res.json(newChat);
 });
 
-app.get('/chats/:userId', (req, res) => {
+app.get('/api/chats/:userId', (req, res) => {
   const { userId } = req.params;
   res.json(chatsDB[userId] || []);
 });
 
-app.post('/chats/:userId/:chatId/message', async (req, res) => {
+app.post('/api/chats/:userId/:chatId/message', async (req, res) => {
   const { userId, chatId } = req.params;
   const { role, content } = req.body;
 
@@ -128,7 +119,7 @@ app.post('/chats/:userId/:chatId/message', async (req, res) => {
 });
 
 // ====== Upload books ======
-app.post('/upload', upload.single('book'), async (req, res) => {
+app.post('/api/upload', upload.single('book'), async (req, res) => {
   try {
     if (!req.file) return res.status(400).json({ error: 'No file uploaded' });
 
@@ -154,9 +145,9 @@ app.post('/upload', upload.single('book'), async (req, res) => {
   }
 });
 
-// ====== Serve React frontend ======
+// ====== Serve React frontend (catch-all for non-API routes) ======
 app.use(express.static(path.join(__dirname, 'public')));
-app.get('*', (req, res) => {
+app.get(/^\/(?!api).*/, (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
 
