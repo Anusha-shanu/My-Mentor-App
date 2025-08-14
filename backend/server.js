@@ -21,7 +21,7 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
-const uploadDir = path.join(__dirname, 'uploads');
+const uploadDir = path.join('/tmp', 'uploads');
 if (!fs.existsSync(uploadDir)) fs.mkdirSync(uploadDir);
 const upload = multer({ dest: uploadDir });
 
@@ -43,6 +43,11 @@ function chunkText(text, chunkSize = 500) {
 app.get('/test', (req, res) => {
   res.json({ message: '✅ Backend is working!' });
 });
+
+app.get('/api/health', (req, res) => {
+  res.json({ status: 'OK' });
+});
+
 
 // ====== Create new chat ======
 app.post('/chats/:userId/new', (req, res) => {
