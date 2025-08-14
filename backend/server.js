@@ -19,6 +19,22 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 const app = express();
+
+// ===== Temporary logging to catch route errors =====
+const originalGet = app.get.bind(app);
+app.get = (path, ...args) => {
+  console.log("GET route:", path);
+  return originalGet(path, ...args);
+};
+
+const originalPost = app.post.bind(app);
+app.post = (path, ...args) => {
+  console.log("POST route:", path);
+  return originalPost(path, ...args);
+};
+// ===== End temporary logging =====
+
+
 app.use(cors());
 app.use(express.json());
 
@@ -57,10 +73,13 @@ app.get('/api/health', (req, res) => res.json({ status: 'OK' }));
 // ====== Test route ======
 app.get('/api/test', (req, res) => res.json({ message: '✅ Backend is working!' }));
 
+
+
 // ====== Chats routes ======
 
 // Create new chat
 app.post('/api/chats/:userId/new', (req, res) => {
+  console.log("Starting server, routes:");
   const { userId } = req.params;
   if (!userId) return res.status(400).json({ error: "Missing userId" });
   if (!chatsDB[userId]) chatsDB[userId] = [];
@@ -91,37 +110,48 @@ app.post('/api/chats/:userId/:chatId/message', async (req, res) => {
   chat.messages.push(message);
 
   if (role === "user") {
+    // try {
+    //   const questionWords = content.toLowerCase().split(/\s+/);
+    //   let bestChunks = [];
+    //   booksDB.forEach(book => {
+    //     book.chunks.forEach(chunk => {
+    //       let score = 0;
+    //       questionWords.forEach(word => { if (chunk.toLowerCase().includes(word)) score++; });
+    //       if (score > 0) bestChunks.push({ text: chunk, score });
+    //     });
+    //   });
+    //   bestChunks.sort((a, b) => b.score - a.score);
+    //   const contextText = bestChunks.slice(0, 3).map(c => c.text).join("\n---\n");
+
+    //   const messagesForAI = [
+    //     { role: 'system', content: "You are a patient mentor AI assistant. Use the study material below to answer questions, otherwise answer from your knowledge." }
+    //   ];
+    //   if (contextText) messagesForAI.push({ role: 'system', content: `📚 Study Material:\n${contextText}` });
+    //   const lastMessages = chat.messages.slice(-5).map(m => ({ role: m.role, content: m.content }));
+    //   messagesForAI.push(...lastMessages);
+    //   messagesForAI.push({ role: 'user', content });
+
+    //   const completion = await openai.chat.completions.create({
+    //     model: 'gpt-4o',
+    //     messages: messagesForAI,
+    //   });
+
+    //   const aiAnswer = completion.choices[0]?.message?.content || "Sorry, I couldn't generate an answer.";
+    //   const aiMessage = { role: 'assistant', content: aiAnswer, timestamp: new Date().toISOString() };
+    //   chat.messages.push(aiMessage);
+
+    //   res.json({ answer: aiAnswer, chat });
+    // 
+      
     try {
-      const questionWords = content.toLowerCase().split(/\s+/);
-      let bestChunks = [];
-      booksDB.forEach(book => {
-        book.chunks.forEach(chunk => {
-          let score = 0;
-          questionWords.forEach(word => { if (chunk.toLowerCase().includes(word)) score++; });
-          if (score > 0) bestChunks.push({ text: chunk, score });
-        });
-      });
-      bestChunks.sort((a, b) => b.score - a.score);
-      const contextText = bestChunks.slice(0, 3).map(c => c.text).join("\n---\n");
+        // Replace actual AI call with a mock response for testing
+        const answer = "This is a mock AI response"; // <-- MOCK
+        const message = { role: "ai", content: answer };
 
-      const messagesForAI = [
-        { role: 'system', content: "You are a patient mentor AI assistant. Use the study material below to answer questions, otherwise answer from your knowledge." }
-      ];
-      if (contextText) messagesForAI.push({ role: 'system', content: `📚 Study Material:\n${contextText}` });
-      const lastMessages = chat.messages.slice(-5).map(m => ({ role: m.role, content: m.content }));
-      messagesForAI.push(...lastMessages);
-      messagesForAI.push({ role: 'user', content });
+        chat.messages.push({ role, content });
+        chat.messages.push(message);
 
-      const completion = await openai.chat.completions.create({
-        model: 'gpt-4o',
-        messages: messagesForAI,
-      });
-
-      const aiAnswer = completion.choices[0]?.message?.content || "Sorry, I couldn't generate an answer.";
-      const aiMessage = { role: 'assistant', content: aiAnswer, timestamp: new Date().toISOString() };
-      chat.messages.push(aiMessage);
-
-      res.json({ answer: aiAnswer, chat });
+        res.json({ answer, chat });
     } catch (err) {
       console.error("❌ OpenAI API error:", err);
       res.status(500).json({ error: "AI generation failed", details: err.message });
@@ -159,8 +189,10 @@ app.post('/api/upload', upload.single('book'), async (req, res) => {
 });
 
 // ====== Serve React frontend ======
+// Serve React frontend only for routes that don't start with /api
 app.use(express.static(path.join(__dirname, 'public')));
-app.get('*', (req, res) => {
+
+app.get(/^\/(?!api).*/, (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
 
