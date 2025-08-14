@@ -145,6 +145,7 @@ const toggleVoice = () => {
     setUploadStatus("");
 
     try {
+      console.log("Sending question:", question);
       const response = await fetch(`${API_BASE_URL}/chats/${user.id}/${selectedChatId}/message`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -165,7 +166,8 @@ const toggleVoice = () => {
         )
       );
 
-      speakAnswer(data.answer || "");
+      console.log("Received data:", data);
+      speakAnswer(data.answer || "No answer");
     } catch (error) {
       console.error("Error calling AI backend:", error);
       setAnswer("⚠️ Error: AI Backend not working");
