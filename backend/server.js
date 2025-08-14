@@ -10,9 +10,8 @@ import fs from 'fs';
 import pdfParse from 'pdf-parse';
 import OpenAI from 'openai';
 
-// Check API key
 if (!process.env.OPENAI_API_KEY) {
-  console.error("❌ ERROR: Missing OPENAI_API_KEY in environment variables");
+  console.error("❌ ERROR: Missing OPENAI_API_KEY in Render environment variables");
   process.exit(1);
 }
 
@@ -23,60 +22,68 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
-// ===== Upload setup =====
+// ====== Debug log for incoming requests ======
+app.use((req, res, next) => {
+  console.log("Incoming request:", req.method, req.url);
+  next();
+});
+
+// ====== Upload setup ======
 const uploadDir = path.join('/tmp', 'uploads');
 if (!fs.existsSync(uploadDir)) fs.mkdirSync(uploadDir);
 const upload = multer({ dest: uploadDir });
 
-// ===== OpenAI setup =====
+// ====== OpenAI setup ======
 const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
-  organization: process.env.OPENAI_ORG_ID || undefined,
+  organization: process.env.OPENAI_ORG_ID,
 });
 
-// ===== In-memory DB =====
+// ====== In-memory DB ======
 const usersDB = [{ id: 1, name: "Demo Student", email: "student@example.com", password: "pass123" }];
-const chatsDB = {};
-const booksDB = [];
+const chatsDB = {}; // { userId: [{id, title, messages: []}] }
+const booksDB = []; // { id, filename, chunks }
 
-// ===== Helpers =====
+// ====== Helpers ======
 function chunkText(text, chunkSize = 500) {
   const chunks = [];
-  for (let i = 0; i < text.length; i += chunkSize) {
-    chunks.push(text.slice(i, i + chunkSize));
-  }
+  for (let i = 0; i < text.length; i += chunkSize) chunks.push(text.slice(i, i + chunkSize));
   return chunks;
 }
 
-// ===== Health check =====
-app.get('/api/health', (req, res) => {
-  res.json({ status: 'OK' });
-});
+// ====== Health check ======
+app.get('/api/health', (req, res) => res.json({ status: 'OK' }));
 
-// ===== Test route =====
-app.get('/api/test', (req, res) => {
-  res.json({ message: '✅ Backend is working!' });
-});
+// ====== Test route ======
+app.get('/api/test', (req, res) => res.json({ message: '✅ Backend is working!' }));
 
-// ===== Chats routes =====
+// ====== Chats routes ======
+
+// Create new chat
 app.post('/api/chats/:userId/new', (req, res) => {
   const { userId } = req.params;
+  if (!userId) return res.status(400).json({ error: "Missing userId" });
   if (!chatsDB[userId]) chatsDB[userId] = [];
   const newChat = { id: Date.now().toString(), title: `Chat ${chatsDB[userId].length + 1}`, messages: [] };
   chatsDB[userId].push(newChat);
   res.json(newChat);
 });
 
+// Get all chats
 app.get('/api/chats/:userId', (req, res) => {
   const { userId } = req.params;
+  if (!userId) return res.status(400).json({ error: "Missing userId" });
   res.json(chatsDB[userId] || []);
 });
 
+// Post message to chat
 app.post('/api/chats/:userId/:chatId/message', async (req, res) => {
   const { userId, chatId } = req.params;
-  const { role, content } = req.body;
+  if (!userId || !chatId) return res.status(400).json({ error: "Missing userId or chatId" });
 
+  const { role, content } = req.body;
   if (!chatsDB[userId]) return res.status(404).json({ error: "User chats not found" });
+
   const chat = chatsDB[userId].find(c => c.id === chatId);
   if (!chat) return res.status(404).json({ error: "Chat not found" });
 
@@ -84,37 +91,36 @@ app.post('/api/chats/:userId/:chatId/message', async (req, res) => {
   chat.messages.push(message);
 
   if (role === "user") {
-    const questionWords = content.toLowerCase().split(/\s+/);
-    let bestChunks = [];
-    booksDB.forEach(book => {
-      book.chunks.forEach(chunk => {
-        let score = 0;
-        questionWords.forEach(word => { if (chunk.toLowerCase().includes(word)) score++; });
-        if (score > 0) bestChunks.push({ text: chunk, score });
-      });
-    });
-    bestChunks.sort((a, b) => b.score - a.score);
-    const contextText = bestChunks.slice(0, 3).map(c => c.text).join("\n---\n");
-
-    const messagesForAI = [
-      { role: 'system', content: "You are a patient mentor AI assistant. Use the study material below to answer questions, otherwise answer from your knowledge." }
-    ];
-    if (contextText) messagesForAI.push({ role: 'system', content: `📚 Study Material:\n${contextText}` });
-    const lastMessages = chat.messages
-      .filter(m => m.role === 'user' || m.role === 'assistant')
-      .slice(-5)
-      .map(m => ({ role: m.role, content: m.content }));
-    messagesForAI.push(...lastMessages);
-    messagesForAI.push({ role: 'user', content });
-
     try {
+      const questionWords = content.toLowerCase().split(/\s+/);
+      let bestChunks = [];
+      booksDB.forEach(book => {
+        book.chunks.forEach(chunk => {
+          let score = 0;
+          questionWords.forEach(word => { if (chunk.toLowerCase().includes(word)) score++; });
+          if (score > 0) bestChunks.push({ text: chunk, score });
+        });
+      });
+      bestChunks.sort((a, b) => b.score - a.score);
+      const contextText = bestChunks.slice(0, 3).map(c => c.text).join("\n---\n");
+
+      const messagesForAI = [
+        { role: 'system', content: "You are a patient mentor AI assistant. Use the study material below to answer questions, otherwise answer from your knowledge." }
+      ];
+      if (contextText) messagesForAI.push({ role: 'system', content: `📚 Study Material:\n${contextText}` });
+      const lastMessages = chat.messages.slice(-5).map(m => ({ role: m.role, content: m.content }));
+      messagesForAI.push(...lastMessages);
+      messagesForAI.push({ role: 'user', content });
+
       const completion = await openai.chat.completions.create({
         model: 'gpt-4o',
         messages: messagesForAI,
       });
+
       const aiAnswer = completion.choices[0]?.message?.content || "Sorry, I couldn't generate an answer.";
       const aiMessage = { role: 'assistant', content: aiAnswer, timestamp: new Date().toISOString() };
       chat.messages.push(aiMessage);
+
       res.json({ answer: aiAnswer, chat });
     } catch (err) {
       console.error("❌ OpenAI API error:", err);
@@ -125,7 +131,7 @@ app.post('/api/chats/:userId/:chatId/message', async (req, res) => {
   }
 });
 
-// ===== Upload books =====
+// ====== Upload books ======
 app.post('/api/upload', upload.single('book'), async (req, res) => {
   try {
     if (!req.file) return res.status(400).json({ error: 'No file uploaded' });
@@ -152,12 +158,12 @@ app.post('/api/upload', upload.single('book'), async (req, res) => {
   }
 });
 
-// ===== Serve React frontend =====
+// ====== Serve React frontend ======
 app.use(express.static(path.join(__dirname, 'public')));
 app.get('*', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
 
-// ===== Start server =====
+// ====== Start server ======
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => console.log(`🚀 Server running on port ${PORT}`));
