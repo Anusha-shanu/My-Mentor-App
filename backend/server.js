@@ -15,6 +15,11 @@ if (!process.env.OPENAI_API_KEY) {
   process.exit(1);
 }
 
+if (!process.env.OPENAI_ORG_ID) {
+  console.error("❌ ERROR: Missing OPENAI_ORG_ID in Render environment variables");
+  process.exit(1);
+}
+
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
@@ -30,7 +35,7 @@ const upload = multer({ dest: uploadDir });
 // ====== OpenAI setup ======
 const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
-  organization: process.env.OPENAI_ORG_ID,  // add this line
+  organization: process.env.OPENAI_ORG_ID,
 });
 
 // ====== In-memory DB ======
