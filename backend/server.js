@@ -9,6 +9,11 @@ import fs from 'fs';
 import pdfParse from 'pdf-parse';
 import OpenAI from 'openai';
 
+if (!process.env.OPENAI_API_KEY) {
+  console.error("❌ ERROR: Missing OPENAI_API_KEY in .env file");
+  process.exit(1);
+}
+
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
@@ -34,9 +39,9 @@ function chunkText(text, chunkSize = 500) {
   return chunks;
 }
 
-// Add the /test route
+// Test route
 app.get('/test', (req, res) => {
-  res.json({ message: 'Backend is working!' });
+  res.json({ message: '✅ Backend is working!' });
 });
 
 // ====== Create new chat ======
@@ -71,11 +76,13 @@ app.post('/chats/:userId/:chatId/message', async (req, res) => {
   chat.messages.push(message);
 
   if (role === "user") {
+    console.log(`📩 User message received: "${content}"`);
+
     // Find relevant book chunks
     const questionWords = content.toLowerCase().split(/\s+/);
     let bestChunks = [];
     booksDB.forEach(book => {
-      book.chunks.forEach((chunk, idx) => {
+      book.chunks.forEach((chunk) => {
         let score = 0;
         questionWords.forEach(word => { if (chunk.toLowerCase().includes(word)) score++; });
         if (score > 0) bestChunks.push({ text: chunk, score });
@@ -88,7 +95,9 @@ app.post('/chats/:userId/:chatId/message', async (req, res) => {
     const messagesForAI = [
       { role: 'system', content: "You are a patient mentor AI assistant. Use the study material below to answer questions, otherwise answer from your knowledge." }
     ];
-    if (contextText) messagesForAI.push({ role: 'system', content: `Study Material:\n${contextText}` });
+    if (contextText) {
+      messagesForAI.push({ role: 'system', content: `📚 Study Material:\n${contextText}` });
+    }
 
     // Include last 5 messages for context
     const lastMessages = chat.messages
@@ -100,19 +109,22 @@ app.post('/chats/:userId/:chatId/message', async (req, res) => {
     messagesForAI.push({ role: 'user', content });
 
     try {
+      console.log("🤖 Sending to OpenAI API...");
       const completion = await openai.chat.completions.create({
-        model: 'gpt-4o-mini',
+        model: 'gpt-4o',
         messages: messagesForAI,
       });
 
-      const aiAnswer = completion.choices[0].message.content;
+      const aiAnswer = completion.choices[0]?.message?.content || "Sorry, I couldn't generate an answer.";
+      console.log("✅ AI replied:", aiAnswer);
+
       const aiMessage = { role: 'assistant', content: aiAnswer, timestamp: new Date().toISOString() };
       chat.messages.push(aiMessage);
 
       res.json({ answer: aiAnswer, chat });
     } catch (err) {
-      console.error("OpenAI API error:", err);
-      res.status(500).json({ error: "AI generation failed" });
+      console.error("❌ OpenAI API error:", err);
+      res.status(500).json({ error: "AI generation failed", details: err.message });
     }
   } else {
     res.json({ chat });
@@ -139,15 +151,16 @@ app.post('/upload', upload.single('book'), async (req, res) => {
     booksDB.push({ id: booksDB.length + 1, filename: originalname, chunks });
 
     fs.unlinkSync(filePath);
+    console.log(`📚 Book uploaded: ${originalname} with ${chunks.length} chunks`);
     res.json({ message: 'File uploaded and processed successfully' });
   } catch (err) {
-    console.error('Upload error:', err);
-    res.status(500).json({ error: 'Upload failed' });
+    console.error('❌ Upload error:', err);
+    res.status(500).json({ error: 'Upload failed', details: err.message });
   }
 });
 
 app.use(express.static(path.join(__dirname, 'public')));
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => {
-  console.log(`Server running on port ${PORT}`);
+  console.log(`🚀 Server running on port ${PORT}`);
 });
