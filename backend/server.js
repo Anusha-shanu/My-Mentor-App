@@ -10,8 +10,9 @@ import fs from 'fs';
 import pdfParse from 'pdf-parse';
 import OpenAI from 'openai';
 
+// Check API key
 if (!process.env.OPENAI_API_KEY) {
-  console.error("❌ ERROR: Missing OPENAI_API_KEY in Render environment variables");
+  console.error("❌ ERROR: Missing OPENAI_API_KEY in environment variables");
   process.exit(1);
 }
 
@@ -22,36 +23,42 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
-// ====== Upload setup ======
+// ===== Upload setup =====
 const uploadDir = path.join('/tmp', 'uploads');
 if (!fs.existsSync(uploadDir)) fs.mkdirSync(uploadDir);
 const upload = multer({ dest: uploadDir });
 
-// ====== OpenAI setup ======
+// ===== OpenAI setup =====
 const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
   organization: process.env.OPENAI_ORG_ID || undefined,
 });
 
-// ====== In-memory DB ======
+// ===== In-memory DB =====
 const usersDB = [{ id: 1, name: "Demo Student", email: "student@example.com", password: "pass123" }];
-const chatsDB = {}; // { userId: [{id, title, messages: []}] }
-const booksDB = []; // { id, filename, chunks }
+const chatsDB = {};
+const booksDB = [];
 
-// ====== Helpers ======
+// ===== Helpers =====
 function chunkText(text, chunkSize = 500) {
   const chunks = [];
-  for (let i = 0; i < text.length; i += chunkSize) chunks.push(text.slice(i, i + chunkSize));
+  for (let i = 0; i < text.length; i += chunkSize) {
+    chunks.push(text.slice(i, i + chunkSize));
+  }
   return chunks;
 }
 
-// ====== Health check ======
-app.get('/api/health', (req, res) => res.json({ status: 'OK' }));
+// ===== Health check =====
+app.get('/api/health', (req, res) => {
+  res.json({ status: 'OK' });
+});
 
-// ====== Test route ======
-app.get('/test', (req, res) => res.json({ message: '✅ Backend is working!' }));
+// ===== Test route =====
+app.get('/api/test', (req, res) => {
+  res.json({ message: '✅ Backend is working!' });
+});
 
-// ====== Chats routes ======
+// ===== Chats routes =====
 app.post('/api/chats/:userId/new', (req, res) => {
   const { userId } = req.params;
   if (!chatsDB[userId]) chatsDB[userId] = [];
@@ -118,7 +125,7 @@ app.post('/api/chats/:userId/:chatId/message', async (req, res) => {
   }
 });
 
-// ====== Upload books ======
+// ===== Upload books =====
 app.post('/api/upload', upload.single('book'), async (req, res) => {
   try {
     if (!req.file) return res.status(400).json({ error: 'No file uploaded' });
@@ -145,12 +152,12 @@ app.post('/api/upload', upload.single('book'), async (req, res) => {
   }
 });
 
-// ====== Serve React frontend (catch-all for non-API routes) ======
+// ===== Serve React frontend =====
 app.use(express.static(path.join(__dirname, 'public')));
-app.get(/^\/(?!api).*/, (req, res) => {
+app.get('*', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
 
-// ====== Start server ======
+// ===== Start server =====
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => console.log(`🚀 Server running on port ${PORT}`));
