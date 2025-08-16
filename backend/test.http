@@ -1,0 +1,5 @@
+curl -X POST http://localhost:5000/chats/user123/meen0tu8kgymzz/message \
+  -H "Content-Type: application/json" \
+  -d '{"role":"user","content":"Hello"}'
+
+

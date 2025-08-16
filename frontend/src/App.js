@@ -224,19 +224,38 @@ const toggleVoice = () => {
 
   const selectedChat = chats.find(c => c.id === selectedChatId);
 
+  // delete chat
+  const deleteChat = async (chatId) => {
+    // Remove from state
+    setChats(prev => prev.filter(c => c.id !== chatId));
+
+    // Reset selected chat if deleted
+    if (selectedChatId === chatId) setSelectedChatId(null);
+
+    // Optionally, delete on backend
+    try {
+      await fetch(`${API_BASE_URL}/chats/${user.id}/${chatId}`, { method: "DELETE" });
+    } catch (err) {
+      console.error("Failed to delete chat on backend:", err);
+    }
+  };
+
+
   return (
-    <div style={{ fontFamily: "Arial", display: "flex", height: "100vh", maxWidth: 1200, margin: "auto", border: "1px solid #ddd", borderRadius: 8, overflow: "hidden" }}>
+    <div style={{ fontFamily: "Arial", display: "flex",flexDirection: window.innerWidth < 768 ? "column" : "row", height: "100vh", maxWidth: 1200, margin: "auto", border: "1px solid #ddd", borderRadius: 8, overflow: "hidden" }}>
       <ChatSidebar
         chats={chats}
         selectedChatId={selectedChatId}
         onNewChat={newChat}
         onSelectChat={selectChat}
+        onDeleteChat={deleteChat}
         user={user}
       />
 
       <main style={{ flex: 1, display: "flex", flexDirection: "column", backgroundColor: "#f9f9f9" }}>
         <div style={{ textAlign: "center", padding: "15px 0", borderBottom: "1px solid #ddd", backgroundColor: "#fff" }}>
-          <img src={logo} alt="My Mentor Logo" style={{ height: "90px" }} />
+          <img src={logo} alt="My Mentor Logo" style={{ height: window.innerWidth < 768 ? "70px" : "120px", // smaller on mobile
+    marginBottom: "10px" }} />
           <select value={language} onChange={(e) => setLanguage(e.target.value)} style={{ marginTop: 8, padding: "6px 12px", borderRadius: "20px", border: "1px solid #ccc", fontSize: "14px" }}>
             {Object.entries(languages).map(([key, { name }]) => (
               <option key={key} value={key}>{name}</option>
